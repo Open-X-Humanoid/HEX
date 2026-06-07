@@ -1,0 +1,83 @@
+{
+  "state": {
+    "left_arm": {
+      "start": 0,
+      "end": 7
+    },
+    "right_arm": {
+      "start": 7,
+      "end": 14
+    },
+    "left_leg": {
+      "start": 14,
+      "end": 20
+    },
+    "right_leg": {
+      "start": 20,
+      "end": 26
+    },
+    "left_hand": {
+      "start": 26,
+      "end": 32
+    },
+    "right_hand": {
+      "start": 32,
+      "end": 38
+    },
+    "head": {
+      "start": 38,
+      "end": 40
+    },
+    "others": {
+      "start": 40,
+      "end": 118
+    }
+  },
+
+  "action": {
+    "left_arm": {
+      "start": 0,
+      "end": 7
+    },
+    "right_arm": {
+      "start": 7,
+      "end": 14
+    },
+    "left_leg": {
+      "start": 14,
+      "end": 20
+    },
+    "right_leg": {
+      "start": 20,
+      "end": 26
+    },
+    "left_hand": {
+      "start": 26,
+      "end": 32
+    },
+    "right_hand": {
+      "start": 32,
+      "end": 38
+    },
+    "head": {
+      "start": 38,
+      "end": 40
+    },
+    "others": {
+      "start": 40,
+      "end": 54
+    }
+  },
+
+  "video": {
+    "image": {
+      "original_key": "observation.images.camera_head_rgb"
+    }
+  },
+
+  "annotation": {
+    "human.action.task_description": {
+      "original_key": "task_index"
+    }
+  }
+}
