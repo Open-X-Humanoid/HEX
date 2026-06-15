@@ -27,7 +27,6 @@ DEFAULT_ZMQ_KEYBOARD_PORT = 5580
 
 
 def _load_runtime_dependencies() -> None:
-    global WebsocketClientPolicy
     global ComposedCameraClientSensor
     global instantiate_g1_robot_model
     global ZMQKeyboardSubscriber
@@ -42,7 +41,6 @@ def _load_runtime_dependencies() -> None:
     global build_command_message
     global pack_pose_message
 
-    from deployment.model_server.tools.websocket_policy_client import WebsocketClientPolicy
     from gear_sonic.camera.composed_camera import ComposedCameraClientSensor
     from gear_sonic.data.robot_model.instantiation.g1 import instantiate_g1_robot_model
     from gear_sonic.utils.data_collection.keyboard_subscriber import ZMQKeyboardSubscriber
@@ -66,20 +64,21 @@ def _load_runtime_dependencies() -> None:
 
 @dataclass
 class ClosedLoopConfig:
-    # HEX websocket policy server.
+    # HEX ZMQ policy server.
     host: str = "127.0.0.1"
     port: int = 10093
-    api_key: str | None = None
+    policy_timeout_ms: int = 60000
 
     # Optional checkpoint/stats path used for q99 state/action normalization.
     checkpoint_path: str | None = None
     stats_path: str | None = None
     embodiment_tag: str = "unitree_g1_sonic"
+    clip_normalized_actions: bool = False
 
     # Runtime loop rates.
     action_publish_rate: int = 50
     action_horizon: int = 100
-    inference_rate: float = 1 / 0.4
+    inference_rate: float = 1 / 0.8
 
     # Camera server.
     camera_host: str = "localhost"
@@ -101,15 +100,89 @@ class ClosedLoopConfig:
     verbose_timing: bool = False
 
 
+class ZMQPolicyClient:
+    def __init__(self, host: str, port: int, timeout_ms: int = 60000):
+        self._host = host
+        self._port = port
+        self._timeout_ms = timeout_ms
+        self._context = zmq.Context()
+        self._init_socket()
+
+    def _init_socket(self) -> None:
+        if hasattr(self, "_socket"):
+            self._socket.close(linger=0)
+        self._socket = self._context.socket(zmq.REQ)
+        self._socket.setsockopt(zmq.RCVTIMEO, self._timeout_ms)
+        self._socket.setsockopt(zmq.SNDTIMEO, self._timeout_ms)
+        self._socket.connect(f"tcp://{self._host}:{self._port}")
+
+    @staticmethod
+    def _to_bytes(data: Any) -> bytes:
+        import msgpack_numpy as mnp
+
+        return mnp.packb(data, default=mnp.encode)
+
+    @staticmethod
+    def _from_bytes(data: bytes) -> Any:
+        import msgpack_numpy as mnp
+
+        return mnp.unpackb(data, object_hook=mnp.decode, raw=False)
+
+    def call_endpoint(self, endpoint: str, data: dict[str, Any] | None = None) -> Any:
+        request: dict[str, Any] = {"endpoint": endpoint}
+        if data is not None:
+            request["data"] = data
+
+        try:
+            self._socket.send(self._to_bytes(request))
+            message = self._socket.recv()
+        except zmq.error.Again:
+            self._init_socket()
+            raise
+
+        response = self._from_bytes(message)
+        if isinstance(response, dict) and "error" in response:
+            raise RuntimeError(response["error"])
+        return response
+
+    def ping(self) -> bool:
+        try:
+            self.call_endpoint("ping")
+            return True
+        except zmq.error.ZMQError:
+            self._init_socket()
+            return False
+
+    def get_action(
+        self,
+        observation: dict[str, Any],
+        options: dict[str, Any] | None = None,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        response = self.call_endpoint("get_action", {"observation": observation, "options": options})
+        return tuple(response)
+
+    def close(self) -> None:
+        self._socket.close(linger=0)
+        self._context.term()
+
+
 def _parse_args() -> ClosedLoopConfig:
     parser = argparse.ArgumentParser(description="Run HEX -> SONIC closed-loop inference.")
     for field_name, field_def in ClosedLoopConfig.__dataclass_fields__.items():
         default = field_def.default
         arg_type = type(default) if default is not None else str
+        arg_names = [f"--{field_name}"]
+        kebab_name = f"--{field_name.replace('_', '-')}"
+        if kebab_name not in arg_names:
+            arg_names.append(kebab_name)
+        if field_name == "host":
+            arg_names.append("--policy-host")
+        elif field_name == "port":
+            arg_names.append("--policy-port")
         if isinstance(default, bool):
-            parser.add_argument(f"--{field_name}", action="store_true", default=default)
+            parser.add_argument(*arg_names, action="store_true", default=default)
         else:
-            parser.add_argument(f"--{field_name}", type=arg_type, default=default)
+            parser.add_argument(*arg_names, type=arg_type, default=default)
     return ClosedLoopConfig(**vars(parser.parse_args()))
 
 
@@ -163,14 +236,18 @@ def _q99_normalize(x: np.ndarray, stats: dict[str, Any]) -> np.ndarray:
     return 2.0 * (x - q01) / denom - 1.0
 
 
-def _q99_unnormalize(x: np.ndarray, stats: dict[str, Any]) -> np.ndarray:
+def _q99_unnormalize(
+    x: np.ndarray,
+    stats: dict[str, Any],
+    clip: bool = False,
+) -> np.ndarray:
     q01 = np.asarray(stats["q01"], dtype=np.float32)
     q99 = np.asarray(stats["q99"], dtype=np.float32)
     mask = np.asarray(stats.get("mask", np.ones_like(q01, dtype=bool)), dtype=bool)
     out = np.asarray(x, dtype=np.float32).copy()
     dim = min(out.shape[-1], q01.shape[0])
-    clipped = np.clip(out[..., :dim], -1.0, 1.0)
-    raw = 0.5 * (clipped + 1.0) * (q99[:dim] - q01[:dim]) + q01[:dim]
+    normalized = np.clip(out[..., :dim], -1.0, 1.0) if clip else out[..., :dim]
+    raw = 0.5 * (normalized + 1.0) * (q99[:dim] - q01[:dim]) + q01[:dim]
     out[..., :dim] = np.where(mask[:dim], raw, out[..., :dim])
     return out
 
@@ -191,8 +268,8 @@ def _build_hex_state(observation: dict[str, Any], stats: dict[str, Any] | None) 
         state["right_leg"],
         state["waist"],
         state["left_arm"],
-        state["right_arm"],
         state["left_hand"],
+        state["right_arm"],
         state["right_hand"],
         # HEX sonic checkpoints use state.others as projected gravity.
         state["others"],
@@ -200,6 +277,9 @@ def _build_hex_state(observation: dict[str, Any], stats: dict[str, Any] | None) 
     flat_state = np.concatenate([_as_bt(part) for part in parts], axis=-1).astype(np.float32)
 
     if stats is not None:
+        expected_dim = len(stats["state"]["q01"])
+        if flat_state.shape[-1] != expected_dim:
+            raise ValueError(f"HEX state dim mismatch: built {flat_state.shape[-1]}, stats expect {expected_dim}")
         flat_state = _q99_normalize(flat_state, stats["state"]).astype(np.float32)
     return flat_state
 
@@ -264,37 +344,38 @@ def prepare_observation_from_sensors(
 
 class HexSonicClient:
     def __init__(self, config: ClosedLoopConfig, stats: dict[str, Any] | None):
-        self._client = WebsocketClientPolicy(
-            host=config.host,
-            port=config.port,
-            api_key=config.api_key,
-        )
+        self._client = ZMQPolicyClient(config.host, config.port, config.policy_timeout_ms)
         self._stats = stats
         self._tag = config.embodiment_tag
+        self._clip_actions = config.clip_normalized_actions
 
     def ping(self) -> bool:
-        try:
-            self._client.init_device("server")
-            return True
-        except Exception:
-            return False
+        return self._client.ping()
 
     def get_action(self, observation: dict[str, Any]) -> dict[str, np.ndarray]:
-        payload = {
+        hex_observation = {
             "batch_images": [[_extract_ego_image(observation)]],
             "instructions": [_extract_prompt(observation)],
             "state": _build_hex_state(observation, self._stats),
             "tags": [self._tag],
-            "do_sample": False,
         }
-        response = self._client.infer(payload)
-        if not response.get("ok", False):
-            raise RuntimeError(f"HEX server inference failed: {response.get('error')}")
-
-        data = response.get("data", response)
-        actions = np.asarray(data["normalized_actions"], dtype=np.float32)
+        action, _info = self._client.get_action(hex_observation, options={"do_sample": False})
+        actions = np.asarray(action["actions"], dtype=np.float32)
         if self._stats is not None:
-            actions = _q99_unnormalize(actions, self._stats["action"]).astype(np.float32)
+            over_bound = np.abs(actions[..., :64]) > 1.0
+            if np.any(over_bound):
+                print(
+                    "[HEX] normalized motion_token exceeds [-1, 1]: "
+                    f"max_abs={np.abs(actions[..., :64]).max():.3f}, "
+                    f"ratio={over_bound.mean():.2%}, "
+                    f"clip={self._clip_actions}",
+                    flush=True,
+                )
+            actions = _q99_unnormalize(
+                actions,
+                self._stats["action"],
+                clip=self._clip_actions,
+            ).astype(np.float32)
 
         if actions.shape[-1] < 64:
             raise ValueError(f"HEX action dim must be >= 64 for SONIC, got {actions.shape}")
@@ -424,7 +505,7 @@ def main(config: ClosedLoopConfig) -> None:
     robot_model = instantiate_g1_robot_model(waist_location="lower_and_upper_body")
     policy = HexSonicClient(config, stats)
 
-    print(f"Connecting to HEX websocket server at {config.host}:{config.port}...")
+    print(f"Connecting to HEX ZMQ server at {config.host}:{config.port}...")
     if policy.ping():
         _print_green("HEX server is reachable.")
     else:

@@ -33,6 +33,7 @@ from tqdm import tqdm
 from PIL import Image
 from pathlib import Path
 from typing import Sequence
+import pyarrow.parquet as pq
 from collections import defaultdict
 from torch.utils.data import Dataset
 from pydantic import BaseModel, Field, ValidationError
@@ -57,10 +58,25 @@ LE_ROBOT_STEPS_FILENAME = "meta/steps.pkl"
 EPSILON = 5e-4
 
 
+
+def _read_parquet_for_training(parquet_path: Path) -> pd.DataFrame:
+    """Read LeRobot parquet files robustly when pandas metadata creates 2D blocks."""
+    return pq.read_table(parquet_path).to_pandas(split_blocks=True)
+
+
+def _get_state_action_original_key(le_modality: str, key: str, meta: LeRobotStateActionMetadata) -> str:
+    if meta.original_key:
+        return meta.original_key
+    if le_modality == "state":
+        return "observation.state"
+    return key if key.startswith("action.") else f"action.{key}"
+
+
 def calculate_dataset_statistics(parquet_paths: list[Path]) -> dict:
     """Calculate the dataset statistics of all columns for a list of parquet files."""
     # Dataset statistics
-    all_low_dim_data_list = []
+    all_low_dim_data = defaultdict(list)
+    parquet_count = 0
     # Collect all the data
     # parquet_paths = parquet_paths[:3]
     for parquet_path in tqdm(
@@ -68,19 +84,32 @@ def calculate_dataset_statistics(parquet_paths: list[Path]) -> dict:
         desc="Collecting all parquet files...",
     ):
         # Load the parquet file
-        parquet_data = pd.read_parquet(parquet_path)
-        parquet_data = parquet_data
-        all_low_dim_data_list.append(parquet_data)
-    all_low_dim_data = pd.concat(all_low_dim_data_list, axis=0)
+        parquet_data = _read_parquet_for_training(parquet_path)
+        parquet_count += 1
+        for column in parquet_data.columns:
+            all_low_dim_data[column].extend(parquet_data[column].tolist())
+
+    if parquet_count == 0:
+        raise FileNotFoundError(
+            f"No parquet files found under the provided paths: {[str(p) for p in parquet_paths[:3]]}..."
+            f" — make sure the dataset has been downloaded/converted before training."
+        )
+
     # Compute dataset statistics
     dataset_statistics = {}
-    for le_modality in all_low_dim_data.columns:
-        if le_modality.startswith("annotation."):
+    for le_modality in tqdm(all_low_dim_data, desc="Processing modalities"):
+        print(le_modality)
+        if "task_info" in le_modality:
             continue
         print(f"Computing statistics for {le_modality}...")
-        np_data = np.vstack(
-            [np.asarray(x, dtype=np.float32) for x in all_low_dim_data[le_modality]]
-        )
+        try:
+            np_data = np.vstack(
+                [np.asarray(x, dtype=np.float32) for x in all_low_dim_data[le_modality]]
+            )
+        except Exception as e:
+            print(f"Warning: Failed to process modality {le_modality} due to error: {e}")
+            continue  
+
         dataset_statistics[le_modality] = {
             "mean": np.mean(np_data, axis=0).tolist(),
             "std": np.std(np_data, axis=0).tolist(),
@@ -353,7 +382,9 @@ class LeRobotSingleDataset(Dataset):
                 dataset_statistics[our_modality][subkey] = {}
                 state_action_meta = le_modality_meta.get_key_meta(f"{our_modality}.{subkey}")
                 assert isinstance(state_action_meta, LeRobotStateActionMetadata)
-                le_modality = state_action_meta.original_key
+                le_modality = _get_state_action_original_key(
+                    our_modality, subkey, state_action_meta
+                )
                 for stat_name in le_statistics[le_modality]:
                     indices = np.arange(
                         state_action_meta.start,
@@ -845,7 +876,7 @@ class LeRobotSingleDataset(Dataset):
                 episode_chunk=chunk_index, episode_index=trajectory_id
             )
             assert parquet_path.exists(), f"Parquet file not found at {parquet_path}"
-            return pd.read_parquet(parquet_path)
+            return _read_parquet_for_training(parquet_path)
 
     def get_trajectory_index(self, trajectory_id: int) -> int:
         """Get the index of the trajectory in the dataset by the trajectory ID.
@@ -1011,9 +1042,7 @@ class LeRobotSingleDataset(Dataset):
         key = key.replace(modality + ".", "")
         # Get the lerobot key
         le_state_or_action_cfg = getattr(self.lerobot_modality_meta, modality)
-        le_key = le_state_or_action_cfg[key].original_key
-        if le_key is None:
-            le_key = key
+        le_key = _get_state_action_original_key(modality, key, le_state_or_action_cfg[key])
         # Get the data array, shape: (T, D)
         assert self.curr_traj_data is not None, f"No data found for {trajectory_id=}"
         assert le_key in self.curr_traj_data.columns, f"No {le_key} found in {trajectory_id=}"

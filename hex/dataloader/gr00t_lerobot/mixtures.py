@@ -243,8 +243,9 @@ DATASET_NAMED_MIXTURES = {
     ],
     "g1_a2ug1_real_world": build_agibot_to_g1_mix(),
     "g1_sonic_real_world_pick_cola": [
-        ("cola_0530", 1.0, "g1_sonic"),
-        ("cola_0604", 0.3, "g1_sonic"),
+        # ("cola_0530", 1.0, "g1_sonic"),
+        # ("cola_0604", 0.3, "g1_sonic"),
+        ("cola_0610", 1.0, "g1_sonic"),
     ],
 
     # h1

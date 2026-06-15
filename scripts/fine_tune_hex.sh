@@ -20,11 +20,11 @@ para_type=2B
 base_vlm=pretrained_models/Qwen3-VL-2B-Instruct
 
 dataset_name=g1_sonic_real_world_pick_cola
-data_root_dir=/media/bsh/data/hex_data
+data_root_dir=/media/bsh/data/hex_data2
 
 vision_history_length=0
 enable_mee=false
-run_id=hex_ac100_3w_8gpu_state_query_history${vision_history_length}_ft
+run_id=hex_ac100_3w_8gpu_state_query_history${vision_history_length}_ft_0610
 pretrained_models_path=pretrained_models/EAI_real_world_2B/hex_ac100_300k_8gpu_state_query_history2/checkpoints/steps_300000_pytorch_model.pt
 
 # ✅ Launch fine-tuning with Accelerate
@@ -46,8 +46,8 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 /media/bsh/miniconda3/envs/hex/bin/accelera
   --datasets.vla_data.need_tag True \
   --datasets.vla_data.vision_history_length ${vision_history_length} \
   --trainer.freeze_modules "" \
-  --trainer.max_train_steps 30000 \
-  --trainer.save_interval 5000 \
+  --trainer.max_train_steps 60000 \
+  --trainer.save_interval 10000 \
   --trainer.logging_frequency 100 \
   --trainer.eval_interval 100000 \
   --trainer.learning_rate.qwen_vl_interface 1e-5 \

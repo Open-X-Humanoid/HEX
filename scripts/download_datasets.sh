@@ -2,7 +2,7 @@
 
 # cd /mnt/dataset/vnwy44/code/HEX && ./scripts/download_datasets.sh
 
-source /mnt/dataset/vnwy44/miniconda3/etc/profile.d/conda.sh
+source /media/bsh/miniconda3/etc/profile.d/conda.sh
 conda activate hex
 
 export HF_TOKEN=

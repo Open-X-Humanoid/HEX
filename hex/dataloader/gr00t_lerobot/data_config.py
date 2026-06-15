@@ -898,10 +898,9 @@ class UnitreeG1SonicDataConfig(BaseDataConfig):
         "state.right_leg",
         "state.waist",
         "state.left_arm",
-        "state.right_arm",
         "state.left_hand",
+        "state.right_arm",  
         "state.right_hand",
-        "state.others",
     ]
     action_keys = [
         "action.motion_token",
@@ -909,8 +908,8 @@ class UnitreeG1SonicDataConfig(BaseDataConfig):
     ]
     language_keys = ["annotation.human.task_description"]
     observation_indices = [0]
-    horizon = 100
-    state_horizon = 50
+    horizon = 50
+    state_horizon = 25
     action_indices = list(range(horizon))
     state_indices = list(range(state_horizon))
     norm_mode = "q99"    # "min_max", "mean_std"
