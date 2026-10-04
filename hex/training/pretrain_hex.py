@@ -402,12 +402,15 @@ class VLATrainer(TrainerUtils):
             # VLA task forward propagation
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 if self.config.framework.name == 'HEX':
-                    if (self.completed_steps + 1) <= 1: # self.config.trainer.num_warmup_steps_state:
+                    state_loss_weight = getattr(self.config.trainer, "state_loss_weight", 1.0)
+                    if (self.completed_steps + 1) <= self.config.trainer.num_warmup_steps_state:
                         output_dict = self.model.forward(batch_vla, cotrain=False)
-                        total_loss = output_dict["state_loss"]
+                        total_loss = output_dict["state_loss"] * state_loss_weight
                     else:
                         output_dict = self.model.forward(batch_vla)
-                        total_loss = output_dict["action_loss"] + output_dict["state_loss"]
+                        total_loss = output_dict["action_loss"] + (
+                            output_dict["state_loss"] * state_loss_weight
+                        )
                 else:
                     output_dict = self.model.forward(batch_vla)
                     total_loss = output_dict["action_loss"]

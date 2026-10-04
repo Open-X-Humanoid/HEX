@@ -5,7 +5,7 @@ from pathlib import Path
 import torch.distributed as dist
 
 from hex.dataloader.gr00t_lerobot.mixtures import DATASET_NAMED_MIXTURES
-from hex.dataloader.gr00t_lerobot.embodiment_tags import ROBOT_TYPE_TO_EMBODIMENT_TAG
+from hex.dataloader.gr00t_lerobot.embodiment_tags import get_embodiment_tag
 
 
 def parse_modality_config(modality_path):
@@ -98,7 +98,7 @@ def build_registry_from_dataset(config):
 
     for d_name, _, robot_type in mixture_spec:
 
-        tag = ROBOT_TYPE_TO_EMBODIMENT_TAG[robot_type].value
+        tag = get_embodiment_tag(robot_type).value
         meta = data_root_dir / d_name / "meta/modality.json"
 
         state_reg, action_reg = parse_modality_config(meta)

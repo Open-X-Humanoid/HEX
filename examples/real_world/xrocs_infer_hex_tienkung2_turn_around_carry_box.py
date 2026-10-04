@@ -98,7 +98,7 @@ class JointInference:
         self.normalizer_action = Normalizer('q99', action_norm_stats)
 
         self.instruction = ["Turn around and carry boxes"]
-        self.tags = ['tienkung2_v3']
+        self.tags = ['tiangong2_v3']
 
         self.num_camera = 1
         self.need_smooth = False

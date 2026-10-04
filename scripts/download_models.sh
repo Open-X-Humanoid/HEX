@@ -5,5 +5,5 @@
 source /media/bsh/miniconda3/etc/profile.d/conda.sh
 conda activate hex
 
-base_dir=/mnt/dataset/vnwy44/model/bsh
+base_dir=/media/bsh/HEX/pretrained_models
 python hex/utils/download_model_qwen.py --base_dir ${base_dir}

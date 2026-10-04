@@ -402,12 +402,15 @@ class VLATrainer(TrainerUtils):
             # VLA task forward propagation
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 if self.config.framework.name == 'HEX':
-                    if (self.completed_steps + 1) <= 1: # self.config.trainer.num_warmup_steps_state:
+                    state_loss_weight = getattr(self.config.trainer, "state_loss_weight", 1.0)
+                    if (self.completed_steps + 1) <= self.config.trainer.num_warmup_steps_state:
                         output_dict = self.model.forward(batch_vla, cotrain=False)
-                        total_loss = output_dict["state_loss"]
+                        total_loss = output_dict["state_loss"] * state_loss_weight
                     else:
                         output_dict = self.model.forward(batch_vla)
-                        total_loss = output_dict["action_loss"] + output_dict["state_loss"]
+                        total_loss = output_dict["action_loss"] + (
+                            output_dict["state_loss"] * state_loss_weight
+                        )
                 else:
                     output_dict = self.model.forward(batch_vla)
                     total_loss = output_dict["action_loss"]
@@ -434,14 +437,6 @@ class VLATrainer(TrainerUtils):
 
     def _finalize_training(self):
         """training end processing"""
-        # save final model
-        if self.accelerator.is_main_process:
-            final_checkpoint = os.path.join(self.config.output_dir, "final_model")
-            os.makedirs(final_checkpoint, exist_ok=True)
-            state_dict = self.accelerator.get_state_dict(self.model)
-            torch.save(state_dict, os.path.join(final_checkpoint, "pytorch_model.pt"))
-            logger.info(f"Training complete. Final model saved at {final_checkpoint}")
-
         # close W&B
         if self.accelerator.is_main_process:
             wandb.finish()

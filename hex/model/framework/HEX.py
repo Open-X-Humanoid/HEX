@@ -12,6 +12,7 @@ import torch.nn as nn
 import numpy as np
 from PIL import Image
 from collections import deque
+from io import BytesIO
 from typing import List, Optional, Tuple
 
 from hex.training.trainer_utils import initialize_overwatch
@@ -24,6 +25,7 @@ from hex.model.modules.action_model.HEX_ActionHeader import get_action_model, Fl
 from hex.model.tools import FRAMEWORK_REGISTRY
 from hex.model.framework.base_framework import baseframework
 from hex.utils.cross_embodiments import get_embodiment_registry
+from hex.dataloader.gr00t_lerobot.transform.state_action import Normalizer
 from hex.training.trainer_utils.trainer_tools import resize_images
 
 
@@ -63,7 +65,8 @@ class HEX(baseframework):
         self.config.framework.action_model.diffusion_model_cfg.cross_attention_dim = dim
 
         # Load embodiment-specific state and action registries
-        self.state_registry, self.action_registry = get_embodiment_registry(config, is_train=True)
+        is_train = getattr(self.config.framework, "is_train", True)
+        self.state_registry, self.action_registry = get_embodiment_registry(config, is_train=is_train)
 
         # State MoE module for cross-embodiment proprioceptive modeling
         self.state_model = CrossEmnodiedStateMoEL2Head(
@@ -286,16 +289,114 @@ class HEX(baseframework):
         normalized_actions = pred_actions.detach().cpu().numpy()
         return {"normalized_actions": normalized_actions}
     
+    @staticmethod
+    def _prepare_prediction_images(batch_images, *, xrocs: bool = False):
+        """Decode transport images; XROCS arrays are BGR and encoded images are RGB."""
+        prepared = []
+        for sample in batch_images:
+            views = []
+            for image in sample:
+                if isinstance(image, Image.Image):
+                    image = image.convert("RGB")
+                elif isinstance(image, (bytes, bytearray)) or (
+                    isinstance(image, np.ndarray) and image.ndim == 1
+                ):
+                    encoded = image.tobytes() if isinstance(image, np.ndarray) else bytes(image)
+                    with Image.open(BytesIO(encoded)) as decoded:
+                        image = decoded.convert("RGB")
+                else:
+                    array = np.asarray(image)
+                    if array.dtype != np.uint8:
+                        array = array.astype(np.float32)
+                        if array.max() <= 1.5:
+                            array = array * 255.0
+                        array = np.clip(array, 0, 255).astype(np.uint8)
+                    if array.ndim == 2:
+                        image = Image.fromarray(array).convert("RGB")
+                    elif array.ndim == 3 and array.shape[-1] in (3, 4):
+                        array = array[..., :3]
+                        if xrocs:
+                            array = array[..., ::-1]
+                        image = Image.fromarray(array)
+                    else:
+                        raise ValueError(f"Unexpected image shape: {array.shape}")
+                views.append(image.resize((224, 224)) if xrocs else image)
+            prepared.append(views)
+        return prepared
+
+    def _prepare_xrocs_state(self, state, tags, unnorm_key=None):
+        """Normalize one raw TianGong3 observation and preserve registry offsets.
+
+        The client packs 86 values without tactile channels. Hand positions are
+        still in XROCS units; the /1000 conversion belongs to model preprocessing.
+        """
+        if tags is None or len(tags) != 1:
+            raise ValueError("xrocs_tiangong3 requires one observation and one tag")
+        tag = tags[0]
+        if unnorm_key is None and tag in self.norm_stats:
+            unnorm_key = tag
+        unnorm_key = self._check_unnorm_key(self.norm_stats, unnorm_key)
+        state_stats = self.norm_stats[unnorm_key]["state"]
+        action_stats = self.norm_stats[unnorm_key]["action"]
+        registry = self.state_registry[tag]
+        # Input order is independent of the registry's unused tactile entries.
+        parts = (
+            ("left_arm", 7), ("left_hand", 6), ("right_arm", 7), ("right_hand", 6),
+            ("head", 2), ("left_leg", 6), ("right_leg", 6), ("waist", 6), ("others", 40),
+        )
+        indices = []
+        for name, dim in parts:
+            info = registry[name]
+            if info["end"] - info["start"] != dim:
+                raise ValueError(f"Unexpected {name} dimension for {tag}: {info}")
+            indices.extend(range(info["start"], info["end"]))
+        model_dim = len(state_stats["q01"])
+        if min(indices) < 0 or max(indices) >= model_dim:
+            raise ValueError("State statistics and embodiment registry do not match")
+        raw = np.asarray(state, dtype=np.float32)
+        if raw.shape not in ((86,), (1, 86), (1, 1, 86)):
+            raise ValueError(f"Expected one 86-D XROCS state, got {raw.shape}")
+        if not np.isfinite(raw).all():
+            raise ValueError("State contains NaN or infinity")
+        raw = raw.reshape(1, 86).copy()
+        raw[:, 7:13] /= 1000.0
+        raw[:, 20:26] /= 1000.0
+        active_stats = {key: np.asarray(state_stats[key])[indices].copy() for key in ("q01", "q99")}
+        normalized = Normalizer("q99", active_stats).forward(torch.from_numpy(raw))
+        # Tactile parts are ignored by the state head, but its slices retain
+        # their original offsets, so place the active values at those offsets.
+        model_state = torch.zeros((1, 1, model_dim), dtype=torch.float32)
+        model_state[0, 0, indices] = normalized[0]
+        action_dim = len(action_stats["q01"])
+        if action_dim != self.action_registry[tag] or action_dim != 34:
+            raise ValueError(f"Expected 34-D TianGong3 actions, got {action_dim}")
+        return model_state, action_stats
+
+    @staticmethod
+    def _unnormalize_prediction_actions(normalized_actions, action_stats):
+        """Drop action-head padding and return the robot's physical action units."""
+        dim = len(action_stats["q01"])
+        if normalized_actions.ndim != 3 or normalized_actions.shape[-1] < dim:
+            raise ValueError(f"Invalid predicted action shape: {normalized_actions.shape}")
+        actions = torch.as_tensor(normalized_actions[..., :dim].copy(), dtype=torch.float32)
+        stats = {key: np.asarray(action_stats[key]).copy() for key in ("q01", "q99")}
+        actions = Normalizer("q99", stats).inverse(actions)
+        if not torch.isfinite(actions).all():
+            raise ValueError("Unnormalized actions contain NaN or infinity")
+        return actions.cpu().numpy()
+
     @torch.inference_mode()
     def predict_action(
         self,
-        batch_images: List[List[Image.Image]],  # Batch of PIL Image list as [view1, view2]
+        batch_images: List[List[Image.Image | np.ndarray | bytes]],
         instructions: List[str],
         state: np.ndarray = None,
         tags: list[str] = None,
         return_moe_info: bool = False,
+        observation_format: str = "normalized",
+        unnorm_key: Optional[str] = None,
         **kwargs: str,
-    ) -> np.ndarray:
+    ) -> dict:
         """
         Online inference for future action prediction.
 
@@ -311,13 +412,31 @@ class HEX(baseframework):
             tags: Optional embodiment tags.
             return_moe_info: Whether to return MoE routing information from the
                 state model for analysis or visualization.
+            observation_format: "normalized" preserves the existing RGB/PIL,
+                normalized-state interface. "xrocs_tiangong3" accepts one raw
+                86-D state and encoded images or BGR arrays; this method performs
+                image decoding/resizing, hand-unit conversion, state normalization
+                and registry alignment, then returns unnormalized 34-D actions.
+            unnorm_key: Dataset statistics from the loaded checkpoint; defaults
+                to the tag when available, otherwise the single statistics key.
             **kwargs: Reserved for future extensions.
 
         Returns:
             A dictionary containing:
                 normalized_actions: Predicted normalized actions with shape
                     [B, T, action_dim].
+                actions: Unnormalized actions [1, T, 34], present only for
+                    observation_format="xrocs_tiangong3".
         """
+        if observation_format not in ("normalized", "xrocs_tiangong3"):
+            raise ValueError(f"Unsupported observation_format: {observation_format}")
+        xrocs = observation_format == "xrocs_tiangong3"
+        action_stats = None
+        if xrocs:
+            if len(batch_images) != 1 or len(instructions) != 1:
+                raise ValueError("xrocs_tiangong3 requires a batch of one observation")
+            state, action_stats = self._prepare_xrocs_state(state, tags, unnorm_key)
+        batch_images = self._prepare_prediction_images(batch_images, xrocs=xrocs)
         train_obs_image_size = getattr(self.config.datasets.vla_data, "image_size", None)
         if train_obs_image_size:
             batch_images = resize_images(batch_images, target_size=train_obs_image_size)
@@ -352,7 +471,10 @@ class HEX(baseframework):
         # step 2: state prediction with qwen last_hidden
         if state is not None:
             with torch.autocast("cuda", dtype=torch.bfloat16):
-                state = torch.from_numpy(np.array(state)).to(last_hidden.device, dtype=last_hidden.dtype)
+                if not isinstance(state, torch.Tensor):
+                    # MessagePack arrays can be read-only; keep tensor storage writable.
+                    state = torch.from_numpy(np.array(state, copy=True))
+                state = state.to(last_hidden.device, dtype=last_hidden.dtype)
                 if return_moe_info:
                     state_hidden = self.state_model(state, last_hidden, tags, return_loss=False, return_moe_info=True)
                 else:
@@ -362,8 +484,11 @@ class HEX(baseframework):
         with torch.autocast("cuda", dtype=torch.float32):
             pred_actions = self.action_model.predict_action(last_hidden, state_hidden, tags)  # (B, chunk_len, action_dim)
 
-        normalized_actions = pred_actions.detach().cpu().numpy()
-        return {"normalized_actions": normalized_actions}
+        normalized_actions = pred_actions.detach().float().cpu().numpy()
+        output = {"normalized_actions": normalized_actions}
+        if xrocs:
+            output["actions"] = self._unnormalize_prediction_actions(normalized_actions, action_stats)
+        return output
 
     def reset(self):
         if self.config.framework.qwenvl.add_query:

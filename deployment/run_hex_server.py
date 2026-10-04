@@ -8,14 +8,15 @@ import socket
 import sys
 from typing import Any
 
-import msgpack_numpy as mnp
 import numpy as np
 import torch
 import zmq
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+
+from deployment.model_server.tools import zmq_numpy as mnp
 
 
 DEFAULT_MODEL_SERVER_PORT = 10093
@@ -92,11 +93,11 @@ class ZMQHEXPolicyServer:
 
     @staticmethod
     def _to_bytes(data: Any) -> bytes:
-        return mnp.packb(data, default=mnp.encode)
+        return mnp.packb(data)
 
     @staticmethod
     def _from_bytes(data: bytes) -> Any:
-        return mnp.unpackb(data, object_hook=mnp.decode, raw=False)
+        return mnp.unpackb(data, raw=False)
 
     def _handle_get_action(self, data: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
         observation = data.get("observation")
@@ -109,8 +110,13 @@ class ZMQHEXPolicyServer:
             **observation,
             **dict(data.get("options") or {}),
         )
-        normalized_actions = np.asarray(output["normalized_actions"], dtype=np.float32)
-        return {"actions": normalized_actions[0, :, :66]}, {"metadata": self._metadata}
+        # Pre/postprocessing belongs to predict_action. Relay physical actions
+        # for raw-observation clients and normalized actions for legacy clients.
+        actions_are_normalized = "actions" not in output
+        key = "normalized_actions" if actions_are_normalized else "actions"
+        actions = np.asarray(output[key], dtype=np.float32)
+        metadata = {**self._metadata, "actions_are_normalized": actions_are_normalized}
+        return {"actions": actions[0], "actions_are_normalized": actions_are_normalized}, {"metadata": metadata}
 
     def _route(self, request: dict[str, Any]) -> Any:
         endpoint = request.get("endpoint", "get_action")
@@ -212,9 +218,13 @@ def main(config: ServerConfig) -> None:
             "model_path": config.model_path,
             "device": config.device,
             "dtype": config.dtype,
-            "action_dim": 66,
+            "action_dim": 34,
             "actions_are_normalized": True,
             "requires_tags": True,
+            "observation_formats": ["normalized", "xrocs_tiangong3"],
+            "norm_stats_keys": list(policy.norm_stats),
+            "embodiment_tags": list(policy.state_registry),
+            "action_dims": policy.action_registry,
         },
         idle_timeout=config.idle_timeout,
     )

@@ -8,10 +8,10 @@
 <a href="https://hex-humanoid.github.io/">
   <img src="https://img.shields.io/badge/Project-Page-2f80ed.svg" alt="Project Page">
 </a>
-<a href="https://huggingface.co/Cognition2ActionLab/HEX-model">
+<a href="https://huggingface.co/X-Humanoid/HEX-Model">
   <img src="https://img.shields.io/badge/Hugging%20Face-Model-ffcc4d.svg?logo=huggingface&logoColor=black" alt="Model">
 </a>
-<a href="https://huggingface.co/datasets/Cognition2ActionLab/eai_real_world">
+<a href="https://huggingface.co/datasets/X-Humanoid/HEX-Datasets">
   <img src="https://img.shields.io/badge/Hugging%20Face-Data-ffcc4d.svg?logo=huggingface&logoColor=black" alt="Data">
 </a>
 
@@ -29,8 +29,12 @@ During deployment, HEX directly predicts arm, hand, and waist actions, while pro
 
 ## News
 
-- ✅ **2026/05/17**: Pretraining and fine-tuning code of VLA has been released.
+- ❌️ Release improved model checkpoints with better performance.
+- ❌️ Optimize the pretraining and fine-tuning code.
+- ✅ **2026/09/18**: All pretraining and fine-tuning datasets for HEX have been released.
+- ✅ **2026/05/17**: The pretraining and fine-tuning code for HEX has been released.
 
+  
 ## Installation
 
 First, git clone this repo and `cd` into it.
@@ -81,11 +85,11 @@ pip install flash_attn-2.7.3+cu12torch2.6cxx11abiFALSE-cp310-cp310-linux_x86_64.
 
 ## Quick Start
 
-We release the pretrained HEX checkpoint on [Hugging Face](https://huggingface.co/Cognition2ActionLab/HEX-model).
+We release the pretrained HEX checkpoint and provide an improved checkpoint trained with a refined data mixture, where lower-quality data sources are down-weighted, on [Hugging Face](https://huggingface.co/X-Humanoid/HEX-Model). 
 
 | Description | Params | Link |
 |:-----------:|:------:|:----:|
-| HEX | 2.4B | 🤗 [HEX-model](https://huggingface.co/Cognition2ActionLab/HEX-model) |
+| HEX | 2.4B | 🤗 [HEX-model](https://huggingface.co/X-Humanoid/HEX-Model) |
 
 ### Download HEX Checkpoints
 
@@ -111,50 +115,77 @@ Once both the HEX checkpoint and the Qwen3-VL model are prepared, follow [`noteb
 
 
 
-## Data
+### Data
 
-### Data Source
+We release all processed datasets used by HEX on 🤗 [Hugging Face](https://huggingface.co/datasets/X-Humanoid/HEX-Datasets). The released data have already been converted into the format used by HEX and can be directly used for pretraining, fine-tuning, and evaluation without additional preprocessing.
 
-We open-source the 8 real-world evaluation task datasets collected in HEX, which can be directly used for fine-tuning.
-The full training data used in this project consists of the following sources:
+The dataset repository is organized into two main subsets:
 
-| Embodiment / Platform | Source | Dataset |
-|:----------------------|:-------|:--------|
-| Tienkung Series | HEX | 🤗 [HF Link](https://huggingface.co/datasets/Cognition2ActionLab/eai_real_world) |
-| Unitree G1 | [Humanoid Everyday](https://arxiv.org/abs/2510.08807) | 🤗 [HF Link](https://huggingface.co/datasets/USC-PSI-Lab/Humanoid-Everyday-G1) | 
-| AgiBot-to-Unitree G1 | [AgiBot World Colosseo](https://arxiv.org/abs/2503.06669) & [TrajBooster](https://arxiv.org/abs/2509.11839) | 🤗 [HF Link](https://huggingface.co/datasets/l2aggle/Agibot2UnitreeG1Retarget) |
-| Unitree H1 | [Humanoid Everyday](https://arxiv.org/abs/2510.08807) | 🤗 [HF Link](https://huggingface.co/datasets/USC-PSI-Lab/Humanoid-Everyday-H1) |
-| Leju Kuavo | [RoboCOIN](https://arxiv.org/abs/2511.17441) | 🤗 [HF Link](https://huggingface.co/collections/RoboCOIN/robocoin) |
+- `pretrain/`: processed multi-embodiment datasets used for HEX pretraining.
+- `eval/`: real-world task datasets used for fine-tuning and evaluation.
 
-To download all datasets, run:
+The overall structure is:
+
+```text
+HEX-Datasets/
+├── pretrain/
+│   ├── agibot/
+│   ├── g1/
+│   ├── h1/
+│   ├── leju/
+│   ├── tiangong2/
+│   ├── tiangong3/
+│   └── tianyi/
+├── eval/
+│   ├── dvt217_carry_boxes_and_avoid_obstacles/
+│   ├── dvt217_carry_boxes_follow_human/
+│   ├── dvt217_imitate_posture/
+│   ├── dvt217_pour_wine_follow_the_finger/
+│   ├── dvt217_turn_around_and_carry_boxes/
+│   ├── evt12_carry_box_and_tidy_table/
+│   ├── evt12_put_cube_in_box/
+│   ├── evt12_tidy_table/
+│   ├── evt2_40_pick_up_box/
+│   ├── evt2_40_pick_up_toy/
+│   └── ...
+└── eval_others/   # deprecated
+```
+
+> **Note:** `eval_others/` is a legacy directory and is no longer used in the current HEX evaluation pipeline.
+
+To download the released datasets, run:
 
 ```bash
 bash scripts/download_datasets.sh
 ```
 
-Since HEX still follows the LeRobot v2.1 data format, each dataset should contain a corresponding `modality.json`.  
-For each Leju Kuavo dataset, please copy `examples/real_world/modality_leju/modality.json` to `<leju_dataset>/meta/modality.json`.
+See the README files under each active subset for more detailed dataset descriptions.
 
-The overall data structure is as follows:
 
-```text
-eai_real_world/
-├── dvt217_carry_boxes_and_avoid_obstacles_260113_lerobot
-├── ...
-├── evt12_carry_box_and_tidy_table_260318_lerobot
-├── ...
-├── g1_add_the_seasoning_to_the_pot
-├── ...
-├── g1_humanoid_everyday
-├── h1_humanoid_everyday
-├── leju_robot_box_storage_parcel
-└── ...
-```
+<details>
+<summary><b>Original data sources and preprocessing</b></summary>
+
+HEX is trained on data collected from multiple humanoid embodiments and public datasets. The original data sources are listed below.
+
+| Embodiment / Platform | Source | Dataset |
+|:----------------------|:-------|:--------|
+| Tiangong Series | HEX | 🤗 [HF Link](https://huggingface.co/datasets/X-Humanoid/HEX-Datasets) |
+| Unitree G1 | [Humanoid Everyday](https://arxiv.org/abs/2510.08807) | 🤗 [HF Link](https://huggingface.co/datasets/USC-PSI-Lab/Humanoid-Everyday-G1) |
+| AgiBot-to-Unitree G1 | [AgiBot World Colosseo](https://arxiv.org/abs/2503.06669) & [TrajBooster](https://arxiv.org/abs/2509.11839) | 🤗 [HF Link](https://huggingface.co/datasets/l2aggle/Agibot2UnitreeG1Retarget) |
+| Unitree H1 | [Humanoid Everyday](https://arxiv.org/abs/2510.08807) | 🤗 [HF Link](https://huggingface.co/datasets/USC-PSI-Lab/Humanoid-Everyday-H1) |
+| Leju Kuavo | [RoboCOIN](https://arxiv.org/abs/2511.17441) | 🤗 [HF Link](https://huggingface.co/collections/RoboCOIN/robocoin) |
+
+The released HEX datasets follow the LeRobot v2.1 data format. Each dataset therefore requires a corresponding `modality.json`.
+
+These preprocessing steps are only required when reconstructing the datasets from the original sources. The processed datasets released in 🤗 [X-Humanoid/HEX-Datasets](https://huggingface.co/datasets/X-Humanoid/HEX-Datasets) can be used directly.
+
+</details>
+
 
 
 ### Data Collection
 
-Due to commercial restrictions, we are unable to release the data collection pipeline used for the Tienkung series robots.
+Due to commercial restrictions, we are unable to release the data collection pipeline used for the Tiangong series robots.
 
 For users interested in collecting data on Unitree G1, we recommend referring to the following open-source data collection pipelines:
 
@@ -165,24 +196,21 @@ For users interested in collecting data on Unitree G1, we recommend referring to
 
 ## Pretraining
 
-You can download our [pretrained HEX model](https://huggingface.co/Cognition2ActionLab/HEX-model) and skip this step if you only want to run inference or evaluation.
+You can download our [pretrained HEX model](https://huggingface.co/X-Humanoid/HEX-Model) and skip this step if you only want to run inference, fine-tuning, or evaluation.
 
-Before pretraining, please download the Qwen3-VL backbone:
+Before pretraining, download the Qwen3-VL backbone:
 
 ```bash
 bash scripts/download_models.sh
 ```
 
-Then, update the dataset paths in the following files to match your local directory structure:
+Then, configure the following fields in [`scripts/pretrain_hex.sh`](scripts/pretrain_hex.sh):
 
-- [`hex/dataloader/gr00t_lerobot/mixtures.py`](hex/dataloader/gr00t_lerobot/mixtures.py), Line 9
-- [`hex/dataloader/gr00t_lerobot/data_config.py`](hex/dataloader/gr00t_lerobot/data_config.py), Line 1299
+- `base_vlm`: path to the downloaded Qwen3-VL backbone.
+- `data_root_dir`: path to the local pretraining dataset directory.
+- `dataset_name`: dataset mixture used for pretraining.
 
-Next, modify the following fields in [`scripts/pretrain_hex.sh`](scripts/pretrain_hex.sh):
-
-- `base_vlm`: path to your downloaded Qwen3-VL model
-- `data_root_dir`: path to your local dataset directory
-- `dataset_name`: the dataset mixture name, which should be consistent with the settings in [`hex/dataloader/gr00t_lerobot/mixtures.py`](hex/dataloader/gr00t_lerobot/mixtures.py)
+The dataset root is automatically exposed through `HEX_PRETRAIN_DATA_ROOT`, so no source-code modification is required.
 
 Finally, start pretraining with:
 
@@ -190,17 +218,19 @@ Finally, start pretraining with:
 bash scripts/pretrain_hex.sh
 ```
 
+Other training settings can be directly adjusted in `scripts/pretrain_hex.sh`.
+
 
 ## Fine-tuning
 
-After obtaining the [pretrained HEX model](https://huggingface.co/Cognition2ActionLab/HEX-model), you can further fine-tune HEX on downstream datasets.
+After obtaining the [pretrained HEX model](https://huggingface.co/X-Humanoid/HEX-Model), you can further fine-tune HEX on downstream tasks using the released evaluation datasets.
 
-Before fine-tuning, please modify the following fields in [`scripts/fine_tune_hex.sh`](scripts/fine_tune_hex.sh):
+Configure the following fields in [`scripts/fine_tune_hex.sh`](scripts/fine_tune_hex.sh):
 
-- `base_vlm`: path to your Qwen3-VL backbone
-- `data_root_dir`: path to your local dataset directory
-- `dataset_name`: name of the downstream dataset mixture, which should be consistent with the settings in [`hex/dataloader/gr00t_lerobot/mixtures.py`](hex/dataloader/gr00t_lerobot/mixtures.py)
-- `pretrained_models_path`: path to the pretrained HEX checkpoint
+- `base_vlm`: path to the Qwen3-VL backbone.
+- `data_root_dir`: path to the local evaluation dataset directory.
+- `dataset_name`: downstream task used for fine-tuning.
+- `pretrained_models_path`: path to the pretrained HEX checkpoint.
 
 Then, start fine-tuning with:
 
@@ -208,9 +238,23 @@ Then, start fine-tuning with:
 bash scripts/fine_tune_hex.sh
 ```
 
+Other training settings can be directly adjusted in `scripts/fine_tune_hex.sh`.
+
 ## Depolyment
 
-Due to commercial restrictions, the low-level RL-based whole-body controller used for the Tienkung series robots is not open-sourced. However, we provide a sample deployment interface in [`examples/real_world`](examples/real_world).
+Due to commercial restrictions, the RL-based low-level whole-body controller used for the Tiangong series robots is not open-sourced. However, we provide a sample real-world deployment interface in [`examples/real_world`](examples/real_world), together with the corresponding deployment scripts:
+
+Deploy the HEX policy on the server:
+
+```bash
+bash scripts/deploy_server.sh
+```
+
+Run the HEX client on the robot side:
+
+```bash
+bash scripts/deploy_client.sh
+```
 
 If you want to deploy your own model on Unitree G1, you may refer to the following open-source projects:
 

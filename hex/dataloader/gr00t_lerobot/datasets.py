@@ -145,6 +145,9 @@ class LeRobotSingleDataset(Dataset):
         delete_pause_frame: bool = False,
         vision_history_length: int = 0,
         action_chunk_size: int = 50,
+        few_shot_episode_ratio: float | None = 1.0,
+        few_shot_num_episodes: int | None = None,
+        few_shot_seed: int = 42,
     ):
         """
         Initialize the dataset.
@@ -165,6 +168,9 @@ class LeRobotSingleDataset(Dataset):
         self.delete_pause_frame = delete_pause_frame
         self.vision_history_length = vision_history_length
         self.action_chunk_size = action_chunk_size
+        self.few_shot_episode_ratio = few_shot_episode_ratio
+        self.few_shot_num_episodes = few_shot_num_episodes
+        self.few_shot_seed = few_shot_seed
 
         self.modality_configs = modality_configs
         self.video_backend = video_backend
@@ -193,6 +199,7 @@ class LeRobotSingleDataset(Dataset):
         self.curr_traj_id = None
 
         self._trajectory_ids, self._trajectory_lengths = self._get_trajectories()
+        self._apply_few_shot_episode_subset()
         self._modality_keys = self._get_modality_keys()
         self._delta_indices = self._get_delta_indices()
         self._all_steps = self._get_all_steps()
@@ -421,7 +428,10 @@ class LeRobotSingleDataset(Dataset):
         Returns:
             list[tuple[str, int]]: A list of (trajectory_id, base_index) tuples.
         """
-        if static:
+        if static and (
+            self.few_shot_num_episodes is None
+            and (self.few_shot_episode_ratio is None or self.few_shot_episode_ratio == 1.0)
+        ):
             config_key = "2d5a34b904d2"
         else:
             config_key = self._get_steps_config_key()
@@ -467,10 +477,57 @@ class LeRobotSingleDataset(Dataset):
         config_dict = {
             "delete_pause_frame": self.delete_pause_frame,
             "dataset_name": self.dataset_name,
+            "few_shot_episode_ratio": self.few_shot_episode_ratio,
+            "few_shot_num_episodes": self.few_shot_num_episodes,
+            "few_shot_seed": self.few_shot_seed,
         }
         # Create a hash of the configuration
         config_str = str(sorted(config_dict.items()))
         return hashlib.md5(config_str.encode()).hexdigest()[:12]
+
+    def _apply_few_shot_episode_subset(self) -> None:
+        """Optionally keep only a deterministic subset of episodes."""
+        if (
+            self.few_shot_num_episodes is None
+            and (self.few_shot_episode_ratio is None or self.few_shot_episode_ratio == 1.0)
+        ):
+            return
+
+        total_episodes = len(self._trajectory_ids)
+        if total_episodes == 0:
+            return
+
+        if self.few_shot_num_episodes is not None:
+            target_episodes = int(self.few_shot_num_episodes)
+        else:
+            if self.few_shot_episode_ratio is None:
+                return
+            if self.few_shot_episode_ratio <= 0:
+                raise ValueError("few_shot_episode_ratio must be positive")
+            target_episodes = int(np.floor(total_episodes * self.few_shot_episode_ratio))
+
+        target_episodes = max(1, min(target_episodes, total_episodes))
+        if target_episodes >= total_episodes:
+            return
+
+        rng = np.random.default_rng(
+            safe_hash(
+                (
+                    self.dataset_name,
+                    self.tag,
+                    self.few_shot_seed,
+                    total_episodes,
+                    target_episodes,
+                )
+            )
+        )
+        selected_indices = np.sort(rng.choice(total_episodes, size=target_episodes, replace=False))
+        self._trajectory_ids = self._trajectory_ids[selected_indices]
+        self._trajectory_lengths = self._trajectory_lengths[selected_indices]
+        print(
+            f"Applied few-shot subset to {self.dataset_name}: "
+            f"{target_episodes}/{total_episodes} episodes kept"
+        )
 
     def _get_all_steps_single_process(self) -> list[tuple[int, int]]:
         """Original single-process implementation as fallback."""

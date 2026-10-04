@@ -3,8 +3,8 @@ from omegaconf import OmegaConf
 
 from hex.dataloader.gr00t_lerobot.datasets import LeRobotSingleDataset, LeRobotMixtureDataset
 from hex.dataloader.gr00t_lerobot.mixtures import DATASET_NAMED_MIXTURES
-from hex.dataloader.gr00t_lerobot.data_config import ROBOT_TYPE_CONFIG_MAP
-from hex.dataloader.gr00t_lerobot.embodiment_tags import ROBOT_TYPE_TO_EMBODIMENT_TAG, EmbodimentTag
+from hex.dataloader.gr00t_lerobot.data_config import get_data_config
+from hex.dataloader.gr00t_lerobot.embodiment_tags import EmbodimentTag, get_embodiment_tag
 
 
 def collate_fn(batch):
@@ -18,6 +18,9 @@ def make_LeRobotSingleDataset(
     delete_pause_frame: bool = False,
     vision_history_length: int = 0,
     action_chunk_size: int = 50,
+    few_shot_episode_ratio: float = 1.0,
+    few_shot_num_episodes: int | None = None,
+    few_shot_seed: int = 42,
 ) -> LeRobotSingleDataset:
     """
     Make a LeRobotSingleDataset object.
@@ -29,15 +32,13 @@ def make_LeRobotSingleDataset(
     :return: A LeRobotSingleDataset object.
     """
     
-    data_config = ROBOT_TYPE_CONFIG_MAP[robot_type]
+    dataset_path = data_root_dir / data_name
+    data_config = get_data_config(robot_type, dataset_path)
     modality_config = data_config.modality_config()
     transforms = data_config.transform()
-    dataset_path = data_root_dir / data_name
-    if robot_type not in ROBOT_TYPE_TO_EMBODIMENT_TAG:
+    embodiment_tag = get_embodiment_tag(robot_type)
+    if embodiment_tag == EmbodimentTag.NEW_EMBODIMENT:
         print(f"Warning: Robot type {robot_type} not found in ROBOT_TYPE_TO_EMBODIMENT_TAG, using {EmbodimentTag.NEW_EMBODIMENT} as default")
-        embodiment_tag = EmbodimentTag.NEW_EMBODIMENT
-    else:
-        embodiment_tag = ROBOT_TYPE_TO_EMBODIMENT_TAG[robot_type]
     return LeRobotSingleDataset(
         dataset_path=dataset_path,
         modality_configs=modality_config,
@@ -47,6 +48,9 @@ def make_LeRobotSingleDataset(
         delete_pause_frame=delete_pause_frame,
         vision_history_length=vision_history_length,
         action_chunk_size=action_chunk_size,
+        few_shot_episode_ratio=few_shot_episode_ratio,
+        few_shot_num_episodes=few_shot_num_episodes,
+        few_shot_seed=few_shot_seed,
     )
 
 
@@ -80,6 +84,9 @@ def get_vla_dataset(
             make_LeRobotSingleDataset(
                 Path(data_root_dir), d_name, robot_type, delete_pause_frame=data_cfg.delete_pause_frame,
                 # vision_history_length=data_cfg.vision_history_length, action_chunk_size=data_cfg.action_chunk_size,
+                few_shot_episode_ratio=getattr(data_cfg, "few_shot_episode_ratio", 1.0),
+                few_shot_num_episodes=getattr(data_cfg, "few_shot_num_episodes", None),
+                few_shot_seed=getattr(data_cfg, "few_shot_seed", 42),
             ), 
             d_weight
         ))

@@ -1,5 +1,6 @@
 # my
 pretrained_models/
+pretrained_models_new/
 moe_videos/
 moe_info/
 flash_attn-2.7.3+cu12torch2.6cxx11abiFALSE-cp310-cp310-linux_x86_64.whl

@@ -93,14 +93,14 @@ def main():
     setup_env(args)
 
     datasets = {
-        "eai_real_world": "Cognition2ActionLab/eai_real_world", # Cognition2ActionLab/eai_real_world contains our processed Humanoid-Everyday dataset
+        "HEX-Datasets": "X-Humanoid/HEX-Datasets",
         # "humanoid_everyday_h1": "USC-PSI-Lab/Humanoid-Everyday-H1",
         # "humanoid_everyday_g1": "USC-PSI-Lab/Humanoid-Everyday-G1",       
-        "leju_robot_box_storage_parcel": "RoboCOIN/leju_robot_box_storage_parcel",
-        "leju_robot_hotel_services": "RoboCOIN/leju_robot_hotel_services_a",
-        "leju_robot_moving_parts": "RoboCOIN/leju_robot_moving_parts_a",
-        "leju_robot_part_placement": "RoboCOIN/leju_robot_part_placement",
-        "leju_robot_pass_the_cleaner": "RoboCOIN/leju_robot_pass_the_cleaner_a",
+        # "leju_robot_box_storage_parcel": "RoboCOIN/leju_robot_box_storage_parcel",
+        # "leju_robot_hotel_services": "RoboCOIN/leju_robot_hotel_services_a",
+        # "leju_robot_moving_parts": "RoboCOIN/leju_robot_moving_parts_a",
+        # "leju_robot_part_placement": "RoboCOIN/leju_robot_part_placement",
+        # "leju_robot_pass_the_cleaner": "RoboCOIN/leju_robot_pass_the_cleaner_a",
     }
 
     base_dir = Path(args.base_dir)

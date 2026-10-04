@@ -77,39 +77,69 @@ class EmbodimentTag(Enum):
     The Leju Kuavo robot (RoboCOIN).
     """
 
-    TIENKUNG2_V1 = 'tienkung2_v1'
+    TIANGONG2_V1 = 'tiangong2_v1'
     """
-    The Tienkung2 robot. state: arm+hand+waist+head (state: 33, action: 23)
-    """
-
-    TIENKUNG2_V2 = 'tienkung2_v2'
-    """
-    The Tienkung2 robot. state: arm+hand+waist (state: 30, action: 20)
+    The TianGong2 robot. state: arm+hand+waist+head (state: 33, action: 23)
     """
 
-    TIENKUNG2_V3 = 'tienkung2_v3'
+    TIANGONG2_V2 = 'tiangong2_v2'
     """
-    The Tienkung2 robot. state: arm+hand+waist (state: 36, action: 32)
-    """
-
-    TIENKUNG3_V1 = 'tienkung3_v1'
-    """
-    The Tienkung3 robot. state: arm+hand+waist+leg+others. (state: 51, action: 20)
+    The TianGong2 robot. state: arm+hand+waist (state: 30, action: 20)
     """
 
-    TIENKUNG3_V2 = 'tienkung3_v2'
+    TIANGONG2_V3 = 'tiangong2_v3'
     """
-    The Tienkung3 robot. state: arm+hand+waist+leg+others, left gripper. (state: 46 action: 20)
-    """
-
-    TIENKUNG3_V3 = 'tienkung3_v3'
-    """
-    The Tienkung3 robot. (state: 46, action: 8)
+    The TianGong2 robot. state: arm+hand+waist (state: 36, action: 32)
     """
 
-    TIENKUNG3_V4 = 'tienkung3_v4'
+    TIANGONG2_V4 = 'tiangong2_v4'
     """
-    The Tienkung3 robot. (state: 100, action: 28)
+    The TianGong2 robot. state: arm+hand+waist (state: 26, action: 16)
+    """
+
+    TIANGONG3_V1 = 'tiangong3_v1'
+    """
+    The TianGong3 robot. state: arm+hand+waist+leg+others. (state: 51, action: 20)
+    """
+
+    TIANGONG3_V2 = 'tiangong3_v2'
+    """
+    The TianGong3 robot. state: arm+hand+waist+leg+others, left gripper. (state: 46 action: 20)
+    """
+
+    TIANGONG3_V3 = 'tiangong3_v3'
+    """
+    The TianGong3 robot. (state: 46, action: 8)
+    """
+
+    TIANGONG3_V4 = 'tiangong3_v4'
+    """
+    The TianGong3 robot. (state: 100, action: 28)
+    """
+
+    TIANGONG3_V5 = 'tiangong3_v5'
+    """
+    The TianGong3 robot. (state: 126, action: 34)
+    """
+
+    TIANGONG3_V6 = 'tiangong3_v6'
+    """
+    The TianGong3 robot. (state: 45, action: 19)
+    """
+
+    TIANGONG3_V7 = 'tiangong3_v7'
+    """
+    The TianGong3 robot. (state: 66, action: 23)
+    """
+
+    TIANGONG3_V8 = 'tiangong3_v8'
+    """
+    The TianGong3 robot. (state: 54, action: 23)
+    """
+
+    TIANGONG3_V9 = 'tiangong3_v9'
+    """
+    The TianGong3 robot. (state: 68, action: 8)
     """
 
     TIANYI_V1 = 'tianyi_v1'
@@ -135,15 +165,21 @@ EMBODIMENT_TAG_MAPPING = {
     EmbodimentTag.UNITREE_H1_V1.value: 5,
     # Leju Kuavo
     EmbodimentTag.LEJU_KUAVO_V1.value: 9,
-    # Tienkung2
-    EmbodimentTag.TIENKUNG2_V1.value: 10,
-    EmbodimentTag.TIENKUNG2_V2.value: 11,
-    EmbodimentTag.TIENKUNG2_V3.value: 12,
-    # Tienkung3
-    EmbodimentTag.TIENKUNG3_V1.value: 15,
-    EmbodimentTag.TIENKUNG3_V2.value: 16,
-    EmbodimentTag.TIENKUNG3_V3.value: 17,
-    EmbodimentTag.TIENKUNG3_V4.value: 18,
+    # TianGong2
+    EmbodimentTag.TIANGONG2_V1.value: 10,
+    EmbodimentTag.TIANGONG2_V2.value: 11,
+    EmbodimentTag.TIANGONG2_V3.value: 12,
+    EmbodimentTag.TIANGONG2_V4.value: 13,
+    # TianGong3
+    EmbodimentTag.TIANGONG3_V1.value: 15,
+    EmbodimentTag.TIANGONG3_V2.value: 16,
+    EmbodimentTag.TIANGONG3_V3.value: 17,
+    EmbodimentTag.TIANGONG3_V4.value: 18,
+    EmbodimentTag.TIANGONG3_V5.value: 19,
+    EmbodimentTag.TIANGONG3_V6.value: 21,
+    EmbodimentTag.TIANGONG3_V7.value: 22,
+    EmbodimentTag.TIANGONG3_V8.value: 23,
+    EmbodimentTag.TIANGONG3_V9.value: 24,
     # TianYi
     EmbodimentTag.TIANYI_V1.value: 20,
 
@@ -170,22 +206,34 @@ ROBOT_TYPE_TO_EMBODIMENT_TAG = {
     # leju kuavo
     "leju_robocoin": EmbodimentTag.LEJU_KUAVO_V1,
 
-    # tienkung2: baseline
-    "tienkung2_v1_baseline": EmbodimentTag.TIENKUNG2_V1,
-    "tienkung2_v2_baseline": EmbodimentTag.TIENKUNG2_V2,
-    "tienkung2_v3_baseline": EmbodimentTag.TIENKUNG2_V3,
+    # tiangong2: baseline
+    "tiangong2_v1_baseline": EmbodimentTag.TIANGONG2_V1,
+    "tiangong2_v2_baseline": EmbodimentTag.TIANGONG2_V2,
+    "tiangong2_v3_baseline": EmbodimentTag.TIANGONG2_V3,
 
-    # tienkung2: hex
-    "tienkung2_v1": EmbodimentTag.TIENKUNG2_V1,
-    "tienkung2_v2": EmbodimentTag.TIENKUNG2_V2,
-    "tienkung2_v3": EmbodimentTag.TIENKUNG2_V3,
+    # tiangong2: hex
+    "tiangong2_v1": EmbodimentTag.TIANGONG2_V1,
+    "tiangong2_v2": EmbodimentTag.TIANGONG2_V2,
+    "tiangong2_v3": EmbodimentTag.TIANGONG2_V3,
+    "tiangong2_v4": EmbodimentTag.TIANGONG2_V4,
 
-    # tienkung3: hex
-    "tienkung3_v1": EmbodimentTag.TIENKUNG3_V1,
-    "tienkung3_v2": EmbodimentTag.TIENKUNG3_V2,
-    "tienkung3_v3": EmbodimentTag.TIENKUNG3_V3,
-    "tienkung3_v4": EmbodimentTag.TIENKUNG3_V4,
+    # tiangong3: hex
+    "tiangong3_v1": EmbodimentTag.TIANGONG3_V1,
+    "tiangong3_v2": EmbodimentTag.TIANGONG3_V2,
+    "tiangong3_v3": EmbodimentTag.TIANGONG3_V3,
+    "tiangong3_v4": EmbodimentTag.TIANGONG3_V4,
+    "tiangong3_v5": EmbodimentTag.TIANGONG3_V5,
+    "tiangong3_v6": EmbodimentTag.TIANGONG3_V6,
+    "tiangong3_v7": EmbodimentTag.TIANGONG3_V7,
+    "tiangong3_v8": EmbodimentTag.TIANGONG3_V8,
+    "tiangong3_v9": EmbodimentTag.TIANGONG3_V9,
 
     # tianyi: hex
     "tianyi_v1": EmbodimentTag.TIANYI_V1,
 }
+
+
+def get_embodiment_tag(robot_type: str) -> EmbodimentTag:
+    if robot_type in ROBOT_TYPE_TO_EMBODIMENT_TAG:
+        return ROBOT_TYPE_TO_EMBODIMENT_TAG[robot_type]
+    return EmbodimentTag.NEW_EMBODIMENT

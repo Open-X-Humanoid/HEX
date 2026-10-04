@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# cd /mnt/dataset/vnwy44/code/HEX && ./scripts/libero/train_hex_libero.sh
+# cd /path/to/HEX && ./scripts/libero/train_hex_libero.sh
 
 # Activate the conda environment
-source /mnt/dataset/vnwy44/miniconda3/etc/profile.d/conda.sh
+source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate hex
 
 # Set distributed training environment variables
@@ -17,19 +17,27 @@ export action_input_dim=2
 # export PYTHONNOUSERSITE=1
 
 para_type=2B
-base_vlm=/mnt/dataset/vnwy44/model/Qwen3-VL-${para_type}-Instruct
+base_vlm=pretrained_models/Qwen3-VL-${para_type}-Instruct
 
 dataset_name=libero_all
-data_root_dir=/mnt/dataset/vnwy44/data/libero_lerobot
+data_root_dir=/path/to/libero_lerobot
 
 vision_history_length=0
 enable_mee=true
-run_id=hex_ac8_3w_8gpu_state_history${vision_history_length}_all_camera
 
-# ✅ Launch training with Accelerate
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 /mnt/dataset/vnwy44/miniconda3/envs/hex/bin/accelerate launch \
+max_train_steps=30000
+save_interval=10000
+
+train_steps_k="$((max_train_steps / 1000))k"
+run_id=hex_ac8_${train_steps_k}_state_history${vision_history_length}_all_camera
+
+visible_devices=0,1,2,3,4,5,6,7
+num_processes=8
+
+# Launch training with Accelerate
+CUDA_VISIBLE_DEVICES=${visible_devices} /media/bsh/miniconda3/envs/hex/bin/accelerate launch \
   --config_file hex/config/deepseeds/deepspeed_zero2.yaml \
-  --num_processes 8 \
+  --num_processes "${num_processes}" \
   hex/training/pretrain_hex.py \
   --config_yaml ./hex/config/training/hex_cotrain_libero.yaml \
   --framework.name HEX \
@@ -44,14 +52,14 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 /mnt/dataset/vnwy44/miniconda3/envs/hex/bin
   --datasets.vla_data.need_tag True \
   --datasets.vla_data.vision_history_length ${vision_history_length} \
   --trainer.freeze_modules "" \
-  --trainer.max_train_steps 30000 \
-  --trainer.save_interval 10000 \
+  --trainer.max_train_steps "${max_train_steps}" \
+  --trainer.save_interval "${save_interval}" \
   --trainer.logging_frequency 100 \
   --trainer.eval_interval 100000 \
   --trainer.learning_rate.qwen_vl_interface 1e-5 \
   --trainer.learning_rate.state_model 4e-5 \
   --trainer.learning_rate.action_model 4e-5 \
   --run_root_dir ./pretrained_models/hex/${dataset_name}_${para_type} \
-  --run_id ${run_id} \
+  --run_id "${run_id}" \
   --wandb_project hex \
   --enable_mee ${enable_mee}

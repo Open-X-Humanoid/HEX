@@ -5,30 +5,59 @@ Defines a registry of dataset mixtures and weights for the Open-X Embodiment Dat
 a float "sampling weight"
 """
 from pathlib import Path
+import os
 
-root_path = "/media/bsh/data/eai_real_world"       # Change this to your dataset directory
+root_path = os.environ.get("HEX_PRETRAIN_DATA_ROOT", "/media/bsh/data/pretrain")
 
-# example
-EAI_TIENKUNG2 = [
-    ("dvt217_react_to_ball_251112_3_direction_lerobot", "tienkung2_v1"),
-    ("dvt217_whack_a_mole_251227_lerobot", "tienkung2_v2"),
-    ("dvt217_imitate_posture_260126_lerobot", "tienkung2_v3"),
-    ("dvt217_pour_wine_follow_the_finger_260126_lerobot", "tienkung2_v3"),
-    # ...
-]
 
-EAI_TIENKUNG3 = [
-    ("dex7_block_ball_251205_lerobot", "tienkung3_v1"),
-    ("dex7_catch_ball_251215_lerobot", "tienkung3_v2"),
-    ("dex7_play_tennis_260104_lerobot", "tienkung3_v2"),
-    ("evt12_put_cube_in_box_260113_lerobot", "tienkung3_v3"),
-    ("evt12_put_tennis_ball_in_box_260110_lerobot", "tienkung3_v3"),
-    # ...
-]
+PRETRAIN_ROBOT_TYPES = {
+    # tiangong2
+    "dvt217_react_to_ball_3_direction": "tiangong2_v1",
+    "dvt217_moving_objects_manipulation": "tiangong2_v1",
+    "dvt217_carrot_or_paper": "tiangong2_v2",
+    "dvt217_place_parts_in_box_put_box_on_chair": "tiangong2_v2",
+    "dvt217_whack_the_mole": "tiangong2_v2",
+    "dvt217_put_ball_into_box": "tiangong2_v3",
+    "dvt217_put_basket": "tiangong2_v3",
+    "dvt426_catch_car": "tiangong2_v3",
+    "dvt426_speed_stack": "tiangong2_v3",
+    "dvt426_stack_cube": "tiangong2_v3",
+    "dvt217_stack_cube": "tiangong2_v4",
+    # tiangong3
+    "dex7_block_ball": "tiangong3_v1",
+    "dex7_react_flag": "tiangong3_v1",
+    "dex7_catch_ball": "tiangong3_v2",
+    "dex7_play_tennis": "tiangong3_v2",
+    "evt12_put_tennis_ball_in_box": "tiangong3_v3",
+    "evt12_move_box_stage": "tiangong3_v4",
+    "evt2_40_carry_ball_to_box": "tiangong3_v5",
+    "evt2_40_close_computer": "tiangong3_v5",
+    "evt2_40_pick_up_clothes_from_overhead_rack": "tiangong3_v5",
+    "evt2_40_pick_up_clothes_from_standing_rack": "tiangong3_v5",
+    "evt2_40_water_the_flower": "tiangong3_v5",
+    "dex7_grab_hat": "tiangong3_v6",
+    "dex7_pick_up_toy_while_walking": "tiangong3_v6",
+    "dex11_follow_hat": "tiangong3_v7",
+    "dex11_pick_hat": "tiangong3_v7",
+    "dex11_grab_hat_put_on_head": "tiangong3_v8",
+    "evt12_fold_towel": "tiangong3_v9",
+    # tianyi
+    "tianyi_29_pour_wine_and_handover": "tianyi_v1",
+}
 
-EAI_TIENYI = [
-    ("tienkung_29_pour_wine_and_handover_251129_am_master", "tianyi_v1"),
-]
+
+def _dataset_dirs(root: Path, subdir: str | None = None, prefix: str | None = None):
+    base = root / subdir if subdir else root
+    if not base.exists():
+        return []
+    return sorted([
+        p for p in base.iterdir()
+        if p.is_dir() and (prefix is None or p.name.startswith(prefix))
+    ])
+
+
+def _relative_name(root: Path, dataset_dir: Path) -> str:
+    return dataset_dir.relative_to(root).as_posix()
 
 
 def build_agibot_to_g1_mix(root=root_path):
@@ -36,9 +65,12 @@ def build_agibot_to_g1_mix(root=root_path):
     Import all tasks of Agibot dataset
     '''
     root = Path(root)
-    tasks = sorted([
-        p.name for p in root.iterdir() if p.is_dir() and p.name.startswith("g1_") and p.name != "g1_humanoid_everyday"
-    ])
+    dataset_dirs = _dataset_dirs(root, "agibot", prefix="g1_") or _dataset_dirs(root, prefix="g1_")
+    tasks = [
+        _relative_name(root, p)
+        for p in dataset_dirs
+        if p.name != "g1_humanoid_everyday"
+    ]
     return [(t, 1.0, "g1_a2ug1") for t in tasks]
 
 
@@ -47,27 +79,157 @@ def build_robocoin_leju_mix(root=root_path):
     Import Leju tasks of RoboCOIN dataset
     '''
     root = Path(root)
-    tasks = sorted([
-        p.name for p in root.iterdir() if p.is_dir() and p.name.startswith("leju_")
-    ])
+    dataset_dirs = _dataset_dirs(root, "leju", prefix="leju_") or _dataset_dirs(root, prefix="leju_")
+    tasks = [_relative_name(root, p) for p in dataset_dirs]
     return [(t, 1.0, "leju_robocoin") for t in tasks]
 
 
+def _with_total_budget(mix, total_budget):
+    if len(mix) == 0:
+        return []
+    per_dataset_weight = total_budget / len(mix)
+    return [(name, per_dataset_weight, cfg) for name, _, cfg in mix]
+
+
+def _build_pretrain_tiangong_family_mix(root, subdir, family, budget):
+    root = Path(root)
+    family_root = root / subdir
+    dataset_dirs = [
+        p.parent.parent
+        for p in sorted(family_root.glob("*/meta/modality.json"))
+        if p.parent.parent.name in PRETRAIN_ROBOT_TYPES
+    ]
+    if not dataset_dirs:
+        return []
+    weight = budget / len(dataset_dirs)
+    return [
+        (
+            _relative_name(root, p),
+            weight,
+            PRETRAIN_ROBOT_TYPES[p.name],
+        )
+        for p in dataset_dirs
+    ]
+
+
+def build_tiangong_mix(
+    tiangong2_budget=0.45,
+    tiangong3_budget=0.45,
+    tianyi_budget=0.1,
+    root=root_path,
+):
+    root = Path(root)
+    pretrain_mix = []
+    pretrain_mix += _build_pretrain_tiangong_family_mix(root, "tiangong2", "tiangong2", tiangong2_budget)
+    pretrain_mix += _build_pretrain_tiangong_family_mix(root, "tiangong3", "tiangong3", tiangong3_budget)
+    pretrain_mix += _build_pretrain_tiangong_family_mix(root, "tianyi", "tianyi", tianyi_budget)
+    return pretrain_mix
+
+
+def build_tiangong3_mix(root=root_path):
+    root = Path(root)
+    return _build_pretrain_tiangong_family_mix(root, "tiangong3", "tiangong3", budget=1.0)
+
+
+def _pretrain_or_legacy_name(root, subdir, dataset_name):
+    root = Path(root)
+    pretrain_path = root / subdir / dataset_name
+    if pretrain_path.exists():
+        return pretrain_path.relative_to(root).as_posix()
+    return dataset_name
+
+
+def build_he_mix(g1_he_budget=0.5, h1_he_budget=0.5, root=root_path):
+    return [
+        (_pretrain_or_legacy_name(root, "g1", "g1_humanoid_everyday"), g1_he_budget, "g1_he"),
+        (_pretrain_or_legacy_name(root, "h1", "h1_humanoid_everyday"), h1_he_budget, "h1_he"),
+    ]
+
+
+def build_g1_he_mix(g1_he_budget=1.0, root=root_path):
+    return [
+        (_pretrain_or_legacy_name(root, "g1", "g1_humanoid_everyday"), g1_he_budget, "g1_he"),
+    ]
+
+
+def build_h1_he_mix(h1_he_budget=1.0, root=root_path):
+    return [
+        (_pretrain_or_legacy_name(root, "h1", "h1_humanoid_everyday"), h1_he_budget, "h1_he"),
+    ]
+
+
+def build_tiangong_g1_a2ug1_mix(
+    tiangong_budget=0.5,
+    g1_a2ug1_budget=0.5,
+):
+    mix = []
+    mix += build_tiangong_mix(
+        tiangong2_budget=tiangong_budget / 3,
+        tiangong3_budget=tiangong_budget / 3,
+        tianyi_budget=tiangong_budget / 3,
+    )
+    mix += _with_total_budget(build_agibot_to_g1_mix(), g1_a2ug1_budget)
+    return mix
+
+
+def build_tiangong_g1_he_mix(
+    tiangong_budget=0.6,
+    g1_he_budget=0.4,
+):
+    mix = []
+    mix += build_tiangong_mix(
+        tiangong2_budget=tiangong_budget*0.45,
+        tiangong3_budget=tiangong_budget*0.45,
+        tianyi_budget=tiangong_budget*0.1,
+    )
+    mix += build_g1_he_mix(g1_he_budget=g1_he_budget)
+    return mix
+
+
+def build_tiangong_h1_he_mix(
+    tiangong_budget=0.6,
+    h1_he_budget=0.4,
+):
+    mix = []
+    mix += build_tiangong_mix(
+        tiangong2_budget=tiangong_budget*0.45,
+        tiangong3_budget=tiangong_budget*0.45,
+        tianyi_budget=tiangong_budget*0.1,
+    )
+    mix += build_h1_he_mix(h1_he_budget=h1_he_budget)
+    return mix
+
+
+def build_tiangong_he_mix(
+    tiangong_budget=0.5,
+    he_budget=0.5,
+):
+    mix = []
+    mix += build_tiangong_mix(
+        tiangong2_budget=tiangong_budget*0.45,
+        tiangong3_budget=tiangong_budget*0.45,
+        tianyi_budget=tiangong_budget*0.1,
+    )
+    mix += build_he_mix(
+        g1_he_budget=he_budget / 2,
+        h1_he_budget=he_budget / 2,
+    )
+    return mix
+
+
 def build_mix_with_type_budget(
-    tienkung2_budget=0.10,
-    tienkung3_budget=0.10,
-    tienyi_budget=0.03,
-    g1_a2ug1_budget=0.25,
-    g1_he_budget=0.20,
-    h1_he_budget=0.20,
-    leju_budget=0.12,
+    tiangong2_budget=0.20,
+    tiangong3_budget=0.24,
+    tianyi_budget=0.02,
+    g1_a2ug1_budget=0.05,
+    g1_he_budget=0.30,
+    h1_he_budget=0.10,
+    leju_budget=0.05,
 ):
     mix = []
 
-    # Tiekung: evenly split the budget within the tienkung groups
-    mix += [(name, tienkung2_budget / len(EAI_TIENKUNG2), cfg) for name, cfg in EAI_TIENKUNG2]
-    mix += [(name, tienkung3_budget / len(EAI_TIENKUNG3), cfg) for name, cfg in EAI_TIENKUNG3]
-    mix += [(name, tienyi_budget / len(EAI_TIENYI), cfg) for name, cfg in EAI_TIENYI]
+    # TianGong: evenly split the budget within the TianGong groups
+    mix += build_tiangong_mix(tiangong2_budget, tiangong3_budget, tianyi_budget)
 
     # Agibot (g1_a2ug1): evenly split the budget across tasks
     g1_tasks = build_agibot_to_g1_mix()  # [(task_name, 1.0, "g1_a2ug1"), ...]
@@ -75,8 +237,7 @@ def build_mix_with_type_budget(
     mix += [(name, w_g1, cfg) for (name, _, cfg) in g1_tasks]
 
     # Humanoid Evertyday (g1_he / h1_he): each treated as one large dataset group
-    mix += [("g1_humanoid_everyday", g1_he_budget, "g1_he")]
-    mix += [("h1_humanoid_everyday", h1_he_budget, "h1_he")]
+    mix += build_he_mix(g1_he_budget=g1_he_budget, h1_he_budget=h1_he_budget)
 
     # RoboCOIN - Leju
     leju_tasks = build_robocoin_leju_mix()
@@ -86,7 +247,7 @@ def build_mix_with_type_budget(
     return mix
 
 
-def build_mix_with_type_budget_wo_tienkung(
+def build_mix_with_type_budget_wo_tiangong(
     g1_a2ug1_budget=0.30,
     g1_he_budget=0.25,
     h1_he_budget=0.25,
@@ -100,8 +261,7 @@ def build_mix_with_type_budget_wo_tienkung(
     mix += [(name, w_g1, cfg) for (name, _, cfg) in g1_tasks]
 
     # Humanoid Evertyday (g1_he / h1_he): each treated as one large dataset group
-    mix += [("g1_humanoid_everyday", g1_he_budget, "g1_he")]
-    mix += [("h1_humanoid_everyday", h1_he_budget, "h1_he")]
+    mix += build_he_mix(g1_he_budget=g1_he_budget, h1_he_budget=h1_he_budget)
 
     # RoboCOIN - Leju
     leju_tasks = build_robocoin_leju_mix()
@@ -114,28 +274,6 @@ def build_mix_with_type_budget_wo_tienkung(
 # Dataset mixture name mapped to a list of tuples containing:
 # {nakename: [(data_name, sampling_weight, robot_type)] }
 DATASET_NAMED_MIXTURES = {
-    "libero_all_baseline": [
-        ("libero_object_no_noops_1.0.0_lerobot", 1.0, "libero_franka"),
-        ("libero_goal_no_noops_1.0.0_lerobot", 1.0, "libero_franka"),
-        ("libero_spatial_no_noops_1.0.0_lerobot", 1.0, "libero_franka"),
-        ("libero_10_no_noops_1.0.0_lerobot", 1.0, "libero_franka"),
-    ],
-    "libero_goal_baseline": [
-        ("libero_goal_no_noops_1.0.0_lerobot", 1.0, "libero_franka"),
-    ],
-    "libero_object_baseline": [
-        ("libero_object_no_noops_1.0.0_lerobot", 1.0, "libero_franka"),
-    ],
-    "libero_spatial_baseline": [
-        ("libero_spatial_no_noops_1.0.0_lerobot", 1.0, "libero_franka"),
-    ],
-    "libero_10_baseline": [
-        ("libero_10_no_noops_1.0.0_lerobot", 1.0, "libero_franka"),
-    ],
-    "libero_90_baseline": [
-        ("libero_90_no_noops_lerobot", 1.0, "libero_franka"),
-    ],
-
     "libero_all": [
         ("libero_object_no_noops_1.0.0_lerobot", 1.0, "libero_franka_hex"),
         ("libero_goal_no_noops_1.0.0_lerobot", 1.0, "libero_franka_hex"),
@@ -166,75 +304,47 @@ DATASET_NAMED_MIXTURES = {
         ("fractal20220817_data_0.1.0_lerobot", 1.0, "oxe_rt1"),
     ],
 
-    "demo_sim_pick_place": [
-        ("sim_pick_place", 1.0, "demo_sim_franka_delta_joints"),
-    ],
-
-    "custom_dataset": [
-        ("custom_dataset_name", 1.0, "custom_robot_config"),
-    ],
-    "custom_dataset_2": [
-        ("custom_dataset_name_1", 1.0, "custom_robot_config"),
-        ("custom_dataset_name_2", 1.0, "custom_robot_config"),
-    ],
-
     "BEHAVIOR_challenge": [
         ("BEHAVIOR_challenge", 1.0, "R1Pro"),
     ],
 
-    # tienkung2: hex
-    "EAI_real_world_react_to_ball": [
-        ("dvt217_react_to_ball_251112_3_direction_lerobot", 1.0, "tienkung2_v1"),
-    ],
-    "EAI_real_world_whack_a_mole": [
-        ("dvt217_whack_a_mole_251227_lerobot", 1.0, "tienkung2_v2"),
-    ],
-    "EAI_real_world_imitate_gesture_old": [
-        ("dvt217_imitate_posture_260104_lerobot", 1.0, "tienkung2_v2"),
-    ],
-    "EAI_real_world_pour_wine_follow_finger_old": [
-        ("dvt217_pour_wine_follow_the_finger_251227_lerobot", 1.0, "tienkung2_v2"),
-    ],
+    # tiangong2: hex
     "EAI_real_world_imitate_gesture": [
-        ("dvt217_imitate_posture_260126_lerobot", 1.0, "tienkung2_v3"),
+        ("dvt217_imitate_posture", 1.0, "tiangong2_v3"),
     ],
     "EAI_real_world_pour_wine_follow_finger": [
-        ("dvt217_pour_wine_follow_the_finger_260126_lerobot", 1.0, "tienkung2_v3"),
+        ("dvt217_pour_wine_follow_the_finger", 1.0, "tiangong2_v3"),
     ],
     "EAI_real_world_carry_boxes_avoid_obstacles": [
-        ("dvt217_carry_boxes_and_avoid_obstacles_260113_lerobot", 1.0, "tienkung2_v3"),
+        ("dvt217_carry_boxes_and_avoid_obstacles", 1.0, "tiangong2_v3"),
     ],
     "EAI_real_world_turn_around_and_carry_boxes": [
-        ("dvt217_turn_around_and_carry_boxes_260113_lerobot", 1.0, "tienkung2_v3"),
+        ("dvt217_turn_around_and_carry_boxes", 1.0, "tiangong2_v3"),
     ],
     "EAI_real_world_carry_boxes_follow_human": [
-        ("dvt217_carry_boxes_follow_human_260126_lerobot", 1.0, "tienkung2_v3"),
+        ("dvt217_carry_boxes_follow_human", 1.0, "tiangong2_v3"),
     ],
     
-    # tienkung3: hex
-    "EAI_real_world_block_ball": [
-        ("dex7_block_ball_251205_lerobot", 1.0, "tienkung3_v1"),
-    ],
-    "EAI_real_world_catch_ball": [
-        ("dex7_catch_ball_251215_lerobot", 1.0, "tienkung3_v2"),
-    ],
+    # tiangong3: hex
     "EAI_real_world_put_cube_in_box": [
-        ("evt12_put_cube_in_box_260330_lerobot", 1.0, "tienkung3_v4"),
+        ("evt12_put_cube_in_box", 1.0, "tiangong3_v4"),
     ],
     "EAI_real_world_carry_box_and_tidy_table": [
-        ("evt12_carry_box_and_tidy_table_260318_lerobot",1.0, "tienkung3_v4"),
+        ("evt12_carry_box_and_tidy_table",1.0, "tiangong3_v4"),
     ],
     "EAI_real_world_tidy_table": [
-        ("evt12_tidy_table_260318_lerobot",1.0, "tienkung3_v4"),
+        ("evt12_tidy_table",1.0, "tiangong3_v4"),
+    ],
+    "EAI_real_pick_up_toy": [
+        ("evt2_40_pick_up_toy", 1.0, "tiangong3_v5"),
+    ],
+    "EAI_real_pick_up_box": [
+        ("evt2_40_pick_up_box", 1.0, "tiangong3_v5"),
     ],
 
     # tianyi: hex
     "EAI_real_world_pour_wine": [
-        ("tienkung_29_pour_wine_and_handover_251130_master", 1.0, "tianyi_v1"),
-        ("tienkung_29_pour_wine_and_handover_251201_master", 1.0, "tianyi_v1"),
-        ("tienkung_29_pour_wine_and_handover_251202_master", 1.0, "tianyi_v1"),
-        ("tienkung_29_pour_wine_and_handover_251203_master", 1.0, "tianyi_v1"),
-        ("tienkung_29_pour_wine_and_handover_251204_master", 1.0, "tianyi_v1"),   
+        ("tianyi_29_pour_wine_and_handover", 1.0, "tianyi_v1"),
     ],
 
     # g1
@@ -242,22 +352,28 @@ DATASET_NAMED_MIXTURES = {
         ("g1_humanoid_everyday", 1.0, "g1_he"),
     ],
     "g1_a2ug1_real_world": build_agibot_to_g1_mix(),
-    "g1_sonic_real_world_pick_cola": [
-        # ("cola_0530", 1.0, "g1_sonic"),
-        # ("cola_0604", 0.3, "g1_sonic"),
-        ("cola_0610", 1.0, "g1_sonic"),
-    ],
 
     # h1
     "h1_he_real_world": [
         ("h1_humanoid_everyday", 1.0, "h1_he"),
     ],
 
-    # corss-embodiment pretraining without Tienkung series
-    "EAI_real_world_wo_tienkung": build_mix_with_type_budget_wo_tienkung(),
+    # source ablations for cross-embodiment pretraining
+    "pretrain_g1_a2ug1": build_agibot_to_g1_mix(),
+    "pretrain_g1_he": build_g1_he_mix(),
+    "pretrain_h1_he": build_h1_he_mix(),
+    "pretrain_he": build_he_mix(),
+    "pretrain_leju": build_robocoin_leju_mix(),
+    "pretrain_tiangong": build_tiangong_mix(),
+    "pretrain_tiangong3": build_tiangong3_mix(),
+    "pretrain_tiangong_g1_a2ug1": build_tiangong_g1_a2ug1_mix(),
+    "pretrain_tiangong_g1_he": build_tiangong_g1_he_mix(),
+    "pretrain_tiangong_h1_he": build_tiangong_h1_he_mix(),
+    "pretrain_tiangong_he": build_tiangong_he_mix(),
+
+    # corss-embodiment pretraining without TianGong series
+    "EAI_real_world_wo_tiangong": build_mix_with_type_budget_wo_tiangong(),
 
     # corss-embodiment pretraining
     "EAI_real_world": build_mix_with_type_budget(),
 }
-
-

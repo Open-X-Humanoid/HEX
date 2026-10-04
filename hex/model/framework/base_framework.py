@@ -44,6 +44,7 @@ class baseframework(PreTrainedModel):
     def from_pretrained(
         cls,
         pretrained_checkpoint: str,
+        is_train: bool = False,
         **kwargs,
     ) -> None:
         """
@@ -73,6 +74,7 @@ class baseframework(PreTrainedModel):
         config = dict_to_namespace(model_config)
         model_config = config
         model_config.trainer.pretrained_checkpoint = None
+        model_config.framework.is_train = is_train
         FrameworkModel = build_framework(cfg=model_config)
         # set for action un-norm
         FrameworkModel.norm_stats = norm_stats

@@ -26,8 +26,8 @@ framework:
     max_seq_len: 1024
     action_dim: 32
     state_dim: 36
-    future_action_window_size: 49
-    action_horizon: 50         # need merge with future_action_window_size
+    future_action_window_size: 99
+    action_horizon: 100         # need merge with future_action_window_size
     past_action_window_size: 0
     repeated_diffusion_steps: 8
     noise_beta_alpha: 1.5
@@ -48,7 +48,7 @@ framework:
       output_dim: 1024
       positional_embeddings: null
   state_model:
-    state_horizon: 25
+    state_horizon: 50
     transformer_block:
       state_dim: 36
       input_dim: 768
@@ -128,6 +128,7 @@ trainer:
   loss_scale:
     vla: 1.0
     vlm: 0.1
+  state_loss_weight: 1.0
   max_grad_norm: 1.0
   warmup_ratio: 0.1
   weight_decay: 0.0

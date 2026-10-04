@@ -14,7 +14,9 @@
 # limitations under the License.
 
 import json
+import os
 from abc import ABC, abstractmethod
+from pathlib import Path
 # from gr00t.model.transforms import GR00TTransform
 
 from hex.dataloader.gr00t_lerobot.datasets import ModalityConfig
@@ -1113,9 +1115,9 @@ class LejuRoboCOINDataConfig(BaseDataConfig):
         return ComposedModalityTransform(transforms=transforms)
 
 
-###################################### TienKung 2.0 #####################################################
+###################################### TianGong 2.0 #####################################################
 
-class TienKung2DataConfig(BaseDataConfig):
+class TianGong2DataConfig(BaseDataConfig):
     def __init__(
         self, 
         modality_file_path: str,
@@ -1195,9 +1197,9 @@ class TienKung2DataConfig(BaseDataConfig):
         return ComposedModalityTransform(transforms=transforms)
     
 
-###################################### TienKung 3.0 #####################################################
+###################################### TianGong 3.0 #####################################################
 
-class Tienkung3DataConfig(BaseDataConfig):
+class TianGong3DataConfig(BaseDataConfig):
     def __init__(
         self, 
         modality_file_path: str,
@@ -1365,7 +1367,8 @@ class TianYiDataConfig(BaseDataConfig):
 
 ACTION_HORIZON = 100
 STATE_HORIZON = ACTION_HORIZON // 2
-DATA_ROOT = "/media/bsh/data/eai_real_world"   # Change this to your dataset directory
+DATA_ROOT = os.environ.get("HEX_DATA_ROOT", "/media/bsh/data/eval")
+PRETRAIN_DATA_ROOT = os.environ.get("HEX_PRETRAIN_DATA_ROOT", "/media/bsh/data/pretrain")
 META = "meta/modality.json"
 
 # 1) Two profiles: baseline vs. hex
@@ -1376,24 +1379,54 @@ PROFILE_KWARGS = {
 
 # 2) A DataConfig constructor for each robot family
 CTORS = {
-    "tienkung2": TienKung2DataConfig,
-    "tienkung3": Tienkung3DataConfig,
+    "tiangong2": TianGong2DataConfig,
+    "tiangong3": TianGong3DataConfig,
     "tianyi": TianYiDataConfig,
 }
 
 # 3) You only need to maintain this task list
 TASKS = [
-    ("tienkung2", "v1", "dvt217_react_to_ball_251112_3_direction_lerobot"),
-    ("tienkung2", "v2", "dvt217_whack_a_mole_251227_lerobot"),
-    ("tienkung2", "v3", "dvt217_pour_wine_follow_the_finger_260126_lerobot"),
+    ("tiangong2", "v1", "dvt217_react_to_ball_251112_3_direction"),
+    ("tiangong2", "v2", "dvt217_whack_a_mole"),
+    ("tiangong2", "v3", "dvt217_pour_wine_follow_the_finger"),
+    ("tiangong2", "v3", "dvt217_stack_cube"),
 
-    ("tienkung3", "v1", "dex7_block_ball_251205_lerobot"),
-    ("tienkung3", "v2", "dex7_catch_ball_251215_lerobot"),
-    ("tienkung3", "v3", "evt12_put_tennis_ball_in_box_260110_lerobot"),
-    ("tienkung3", "v4", "evt12_tidy_table_260318_lerobot"),
+    ("tiangong3", "v1", "dex7_block_ball"),
+    ("tiangong3", "v2", "dex7_catch_ball"),
+    ("tiangong3", "v3", "evt12_put_tennis"),
+    ("tiangong3", "v4", "evt12_tidy_table"),
+    ("tiangong3", "v5", "evt2_40_pick_up_toy"),
+    ("tiangong3", "v6", "dex7_grab_hat"),
+    ("tiangong3", "v7", "dex11_follow_hat"),
+    ("tiangong3", "v8", "dex11_grab_hat_put_on_head"),
+    ("tiangong3", "v9", "evt12_fold_towel"),
 
-    ("tianyi", "v1", "tienkung_29_pour_wine_and_handover_251129_am_master"),
+    ("tianyi", "v1", "tianyi_29_pour_wine_and_handover"),
 ]
+
+
+PRETRAIN_FAMILY_DIRS = {
+    "tiangong2": "tiangong2",
+    "tiangong3": "tiangong3",
+    "tianyi": "tianyi",
+}
+
+
+def _pretrain_robot_type(family: str, dataset_name: str) -> str:
+    dataset_name = dataset_name.replace("tienkung", "tiangong")
+    if dataset_name.startswith(f"{family}_"):
+        return dataset_name
+    return f"{family}_{dataset_name}"
+
+
+def _first_existing_modality_path(family: str, dataset_name: str) -> Path | None:
+    candidates = [
+        Path(DATA_ROOT) / dataset_name / META,
+        Path(PRETRAIN_DATA_ROOT) / PRETRAIN_FAMILY_DIRS.get(family, family) / dataset_name / META,
+        Path("/media/bsh/data/eai_real_world") / dataset_name / META,
+    ]
+    return next((path for path in candidates if path.exists()), None)
+
 
 def build_map():
     m = {
@@ -1410,14 +1443,55 @@ def build_map():
         "h1_he": UnitreeH1HEDataConfig(),
         "leju_robocoin": LejuRoboCOINDataConfig(),
     }
-    try:
-        for family, task, d in TASKS:
-            path = f"{DATA_ROOT}/{d}/{META}"
-            ctor = CTORS[family]
-            m[f"{family}_{task}_baseline"] = ctor(path, action_horizon=ACTION_HORIZON)
-            m[f"{family}_{task}"] = ctor(path, state_horizon=STATE_HORIZON, action_horizon=ACTION_HORIZON)
-    except:
-        print("The dataconfig of Tienkung series are not initialized.")
+    for family, task, d in TASKS:
+        path = _first_existing_modality_path(family, d)
+        if path is None:
+            continue
+        ctor = CTORS[family]
+        m[f"{family}_{task}_baseline"] = ctor(str(path), action_horizon=ACTION_HORIZON)
+        m[f"{family}_{task}"] = ctor(str(path), state_horizon=STATE_HORIZON, action_horizon=ACTION_HORIZON)
+
+    pretrain_root = Path(PRETRAIN_DATA_ROOT)
+    for family, subdir in PRETRAIN_FAMILY_DIRS.items():
+        ctor = CTORS[family]
+        family_root = pretrain_root / subdir
+        if not family_root.exists():
+            continue
+        for modality_path in sorted(family_root.glob(f"*/{META}")):
+            dataset_name = modality_path.parent.parent.name
+            m[_pretrain_robot_type(family, dataset_name)] = ctor(
+                str(modality_path),
+                state_horizon=STATE_HORIZON,
+                action_horizon=ACTION_HORIZON,
+            )
     return m
+
+
+def get_data_config(robot_type: str, dataset_path: Path | str | None = None):
+    if dataset_path is not None:
+        dataset_path = Path(dataset_path)
+        modality_path = dataset_path / META
+        if modality_path.exists():
+            if robot_type.startswith("tiangong2_"):
+                return TianGong2DataConfig(
+                    str(modality_path),
+                    state_horizon=STATE_HORIZON,
+                    action_horizon=ACTION_HORIZON,
+                )
+            if robot_type.startswith("tiangong3_"):
+                return TianGong3DataConfig(
+                    str(modality_path),
+                    state_horizon=STATE_HORIZON,
+                    action_horizon=ACTION_HORIZON,
+                )
+            if robot_type.startswith("tianyi_"):
+                return TianYiDataConfig(
+                    str(modality_path),
+                    state_horizon=STATE_HORIZON,
+                    action_horizon=ACTION_HORIZON,
+                )
+
+    return ROBOT_TYPE_CONFIG_MAP[robot_type]
+
 
 ROBOT_TYPE_CONFIG_MAP = build_map()
