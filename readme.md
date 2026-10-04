@@ -115,7 +115,7 @@ Once both the HEX checkpoint and the Qwen3-VL model are prepared, follow [`noteb
 
 
 
-### Data
+## Data
 
 We release all processed datasets used by HEX on 🤗 [Hugging Face](https://huggingface.co/datasets/X-Humanoid/HEX-Datasets). The released data have already been converted into the format used by HEX and can be directly used for pretraining, fine-tuning, and evaluation without additional preprocessing.
 
