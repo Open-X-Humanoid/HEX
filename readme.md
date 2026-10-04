@@ -29,8 +29,8 @@ During deployment, HEX directly predicts arm, hand, and waist actions, while pro
 
 ## News
 
-- ❌️ Release improved model checkpoints with better performance.
-- ❌️ Optimize the pretraining and fine-tuning code.
+- ✅ **2026/10/04** Optimize the pretraining and fine-tuning code.
+- ✅ **2026/10/01** Release improved model checkpoints with better performance.
 - ✅ **2026/09/18**: All pretraining and fine-tuning datasets for HEX have been released.
 - ✅ **2026/05/17**: The pretraining and fine-tuning code for HEX has been released.
 
